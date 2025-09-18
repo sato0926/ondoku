@@ -100,7 +100,17 @@
 
         // Firebase初期化に必要なグローバル変数
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        
+        // __firebase_configが提供されない場合に備え、空のオブジェクトをデフォルト値として設定
+        // ご自身のFirebaseプロジェクトの設定に置き換えてください。
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         // UI要素
@@ -169,12 +179,16 @@
         // Firebaseと認証の初期化
         async function initializeFirebase() {
             try {
+                if (typeof firebaseConfig !== 'object' || Object.keys(firebaseConfig).length === 0) {
+                    throw new Error("firebaseConfig is missing or empty.");
+                }
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
                 setLogLevel('debug'); // Firestoreのログを有効化
 
-                onAuthStateChanged(auth, async (user) => {
+                // 認証状態の変化を監視するリスナーを設定
+                onAuthStateChanged(auth, (user) => {
                     if (user) {
                         userId = user.uid;
                         userIdDisplay.textContent = `ユーザーID: ${userId}`;
@@ -184,25 +198,26 @@
                         console.log("Firebase auth state changed. User ID:", userId);
                     } else {
                         userId = null;
-                        authStatus.textContent = '匿名認証中...';
+                        // ユーザーがログアウトした場合、ボタンを無効化
+                        playButton.disabled = true;
+                        recordButton.disabled = true;
+                        authStatus.textContent = '認証に失敗しました。';
                         console.log("Firebase auth state changed. No user logged in.");
-                        try {
-                            if (initialAuthToken) {
-                                await signInWithCustomToken(auth, initialAuthToken);
-                            } else {
-                                await signInAnonymously(auth);
-                            }
-                        } catch (error) {
-                            console.error("Firebase認証エラー:", error);
-                            authStatus.textContent = '認証に失敗しました。';
-                            playButton.disabled = true;
-                            recordButton.disabled = true;
-                        }
                     }
                 });
+
+                // 現在の認証状態を確認し、未認証の場合はサインイン処理を開始
+                if (!auth.currentUser) {
+                    authStatus.textContent = '匿名認証中...';
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                }
             } catch (error) {
                 console.error("Firebase初期化エラー:", error);
-                authStatus.textContent = 'Firebase初期化に失敗しました。';
+                authStatus.textContent = `Firebase初期化に失敗しました。${error.message || ''}`;
                 playButton.disabled = true;
                 recordButton.disabled = true;
             }
@@ -447,7 +462,8 @@
         }
 
         // アプリ起動時の初期化
-        initializeFirebase();
+        window.onload = initializeFirebase;
     </script>
 </body>
 </html>
+
