@@ -58,14 +58,14 @@
             <div id="user-id-display" class="text-xs text-gray-500 break-all"></div>
 
             <!-- 英文を聞くボタン -->
-            <button id="play-button" class="w-full py-3 px-6 text-white font-bold rounded-lg transition-all transform hover:scale-105 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+            <button id="play-button" class="w-full py-3 px-6 text-white font-bold rounded-lg transition-all transform hover:scale-105 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2" disabled>
                 英文を聞く
             </button>
 
             <!-- 録音ボタンとランプ -->
             <div class="flex items-center justify-center space-x-4">
                 <div id="recording-indicator" class="w-4 h-4 rounded-full bg-red-400"></div>
-                <button id="record-button" class="flex-1 py-3 px-6 text-white font-bold rounded-lg transition-all transform hover:scale-105 bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                <button id="record-button" class="flex-1 py-3 px-6 text-white font-bold rounded-lg transition-all transform hover:scale-105 bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" disabled>
                     録音開始
                 </button>
             </div>
@@ -178,7 +178,9 @@
                     if (user) {
                         userId = user.uid;
                         userIdDisplay.textContent = `ユーザーID: ${userId}`;
-                        authStatus.textContent = '認証済み。準備完了。';
+                        authStatus.textContent = '認証済み。アプリを利用できます。';
+                        playButton.disabled = false;
+                        recordButton.disabled = false;
                         console.log("Firebase auth state changed. User ID:", userId);
                     } else {
                         userId = null;
@@ -193,12 +195,16 @@
                         } catch (error) {
                             console.error("Firebase認証エラー:", error);
                             authStatus.textContent = '認証に失敗しました。';
+                            playButton.disabled = true;
+                            recordButton.disabled = true;
                         }
                     }
                 });
             } catch (error) {
                 console.error("Firebase初期化エラー:", error);
                 authStatus.textContent = 'Firebase初期化に失敗しました。';
+                playButton.disabled = true;
+                recordButton.disabled = true;
             }
         }
 
@@ -304,9 +310,8 @@
                                 // 20代女性アメリカ英語話者を想定した声を選択
                                 prebuiltVoiceConfig: { voiceName: "Leda" } 
                             }
-                        }
-                    },
-                    model: "gemini-2.5-flash-preview-tts"
+                        },
+                        model: "gemini-2.5-flash-preview-tts"
                     };
 
                     const apiKey = "";
@@ -357,7 +362,7 @@
 
                 } catch (error) {
                     console.error('TTS処理中のエラー:', error);
-                    alert('英文の読み上げに失敗しました。\n詳細: ${error.message}');
+                    alert(`英文の読み上げに失敗しました。\n詳細: ${error.message}`);
                     break; // リトライせずに終了
                 }
             }
