@@ -121,6 +121,8 @@
         let db;
         let auth;
         let userId;
+        const maxRetries = 3;
+        const initialDelay = 1000;
 
         // PCMをWAVに変換するヘルパー関数
         function pcmToWav(pcmData, sampleRate) {
@@ -278,78 +280,91 @@
         playButton.addEventListener('click', async () => {
             if (isPlaying) return;
             isPlaying = true;
+            const originalButtonText = playButton.textContent;
+            playButton.textContent = '読み込み中...';
+            playButton.disabled = true;
 
             const text = targetTextarea.value;
             if (!text) {
                 alert('英文を入力してください。');
                 isPlaying = false;
+                playButton.textContent = originalButtonText;
+                playButton.disabled = false;
                 return;
             }
 
-            try {
-                // Gemini TTS APIへのリクエスト
-                const payload = {
-                    contents: [{ parts: [{ text: text }] }],
-                    generationConfig: {
-                        responseModalities: ["AUDIO"],
-                        speechConfig: {
-                            voiceConfig: {
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+                try {
+                    // Gemini TTS APIへのリクエスト
+                    const payload = {
+                        contents: [{ parts: [{ text: text }] }],
+                        generationConfig: {
+                            responseModalities: ["AUDIO"],
+                            speechConfig: {
                                 // 20代女性アメリカ英語話者を想定した声を選択
                                 prebuiltVoiceConfig: { voiceName: "Leda" } 
                             }
                         }
                     },
                     model: "gemini-2.5-flash-preview-tts"
-                };
+                    };
 
-                const apiKey = "";
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+                    const apiKey = "";
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
 
-                let response;
-                try {
-                    response = await fetch(apiUrl, {
+                    const response = await fetch(apiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
-                } catch (e) {
-                    console.error('Fetch error:', e);
-                }
-
-                if (!response || !response.ok) {
-                    console.error('TTS APIからの応答エラー:', response?.status);
-                    alert('英文の読み上げに失敗しました。');
-                    isPlaying = false;
-                    return;
-                }
-
-                const result = await response.json();
-                const part = result?.candidates?.[0]?.content?.parts?.[0];
-                const audioData = part?.inlineData?.data;
-                const mimeType = part?.inlineData?.mimeType;
-
-                if (audioData && mimeType && mimeType.startsWith("audio/L16")) {
-                    const sampleRate = parseInt(mimeType.match(/rate=(\d+)/)[1], 10);
-                    const pcmData = base64ToArrayBuffer(audioData);
-                    const wavBlob = pcmToWav(pcmData, sampleRate);
-                    const audioUrl = URL.createObjectURL(wavBlob);
                     
-                    const audio = new Audio(audioUrl);
-                    audio.play();
-                    audio.onended = () => {
-                        isPlaying = false;
-                    };
-                } else {
-                    console.error('TTS APIからの無効なオーディオデータ:', result);
-                    alert('音声データの取得に失敗しました。');
-                    isPlaying = false;
-                }
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        // ステータスコードが429 (Too Many Requests) の場合はリトライ
+                        if (response.status === 429 && attempt < maxRetries - 1) {
+                            const delay = initialDelay * Math.pow(2, attempt);
+                            console.warn(`TTS APIリクエストが失敗しました。リトライします... (${attempt + 1}/${maxRetries})`);
+                            await new Promise(res => setTimeout(res, delay));
+                            continue;
+                        }
+                        throw new Error(`TTS API応答エラー: ${response.status} - ${errorData.error.message || '不明なエラー'}`);
+                    }
 
-            } catch (error) {
-                console.error('TTS処理中のエラー:', error);
-                alert('英文の読み上げに失敗しました。');
-                isPlaying = false;
+                    const result = await response.json();
+                    const part = result?.candidates?.[0]?.content?.parts?.[0];
+                    const audioData = part?.inlineData?.data;
+                    const mimeType = part?.inlineData?.mimeType;
+
+                    if (audioData && mimeType && mimeType.startsWith("audio/L16")) {
+                        const sampleRate = parseInt(mimeType.match(/rate=(\d+)/)[1], 10);
+                        const pcmData = base64ToArrayBuffer(audioData);
+                        const wavBlob = pcmToWav(pcmData, sampleRate);
+                        const audioUrl = URL.createObjectURL(wavBlob);
+                        
+                        const audio = new Audio(audioUrl);
+                        audio.play();
+                        audio.onended = () => {
+                            isPlaying = false;
+                            playButton.textContent = originalButtonText;
+                            playButton.disabled = false;
+                        };
+                        return; // 成功した場合はループを終了
+                    } else {
+                        console.error('TTS APIからの無効なオーディオデータ:', result);
+                        alert('音声データの取得に失敗しました。');
+                        break; // リトライせずに終了
+                    }
+
+                } catch (error) {
+                    console.error('TTS処理中のエラー:', error);
+                    alert('英文の読み上げに失敗しました。\n詳細: ${error.message}');
+                    break; // リトライせずに終了
+                }
             }
+
+            isPlaying = false;
+            playButton.textContent = originalButtonText;
+            playButton.disabled = false;
         });
 
         function base64ToArrayBuffer(base64) {
